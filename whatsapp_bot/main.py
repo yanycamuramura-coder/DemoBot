@@ -10,13 +10,13 @@ app = FastAPI()
 # =========================
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-VERIFY_TOKEN = "meutoken123"
+VERIFY_TOKEN = os.get("VERIFY_TOKEN")
+
 
 # =========================
 # ESTADO DOS USUÁRIOS
 # =========================
 user_state = {}
-
 # =========================
 # VERIFICAÇÃO DO WEBHOOK (GET)
 # =========================
@@ -173,4 +173,5 @@ def send_buttons(to: str, message: str, buttons: list):
 
     resp = requests.post(url, headers=headers, json=payload)
     print("Resposta WhatsApp (buttons):", resp.json())
+
 
