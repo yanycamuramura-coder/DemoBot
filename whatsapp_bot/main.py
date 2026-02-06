@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import PlainTextResponse
+import os
 import requests
 
 app = FastAPI()
@@ -7,8 +8,8 @@ app = FastAPI()
 # =========================
 # CONFIGURAÇÕES
 # =========================
-WHATSAPP_TOKEN = "EAAK4T4Fi9xMBQijGnpOfaItKiSyaTK8zJrPMchcSHDBpIYb318MNO3Qn1VQSt2KhJPKt24Q95rJZCnZAkaldfpIdBUhYaBprTTBHqFmZA8O9m0KdMk8UgfTlZAevglRFgox7jH2REPFWlOiZC8aVcSf872LMiSxrALh7XIBJ5cskOVDgePjx0IAVm5vmhVaMVkfFLUZCO5iw7KvhABt3a7Go6a3YsTRbHJAL4AHe5iS72QUVQbxqAWfrVMK1ORwyvLh85rjtQ6EWHYzTwLJJXbutZAd"
-PHONE_NUMBER_ID = 965135390021890
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = "meutoken123"
 
 # =========================
@@ -172,3 +173,4 @@ def send_buttons(to: str, message: str, buttons: list):
 
     resp = requests.post(url, headers=headers, json=payload)
     print("Resposta WhatsApp (buttons):", resp.json())
+
