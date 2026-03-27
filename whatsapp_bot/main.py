@@ -16,6 +16,7 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 # ESTADO DOS USUÁRIOS
 # =========================
 user_state = {}
+
 # =========================
 # VERIFICAÇÃO DO WEBHOOK (GET)
 # =========================
@@ -57,24 +58,26 @@ async def webhook(request: Request):
                 if any(g in text for g in greetings):
                     send_buttons(
                         sender,
-                        "Olá 👋 Sou o assistente da Clínica Saúde+. Como posso ajudar?",
+                        "Olá 👋 Bem-vindo ao nosso restaurante! Como posso ajudar?",
                         [
-                            {"id": "marcar", "title": "📅 Marcar consulta"},
-                            {"id": "horarios", "title": "🕒 Horários"},
-                            {"id": "atendente", "title": "👩‍⚕️ Atendente"}
+                            {"id": "menu", "title": "📖 Ver Menu"},
+                            {"id": "pedido", "title": "🛒 Fazer Pedido"},
+                            {"id": "atendente", "title": "👤 Atendente"}
                         ]
                     )
                     user_state.pop(sender, None)
                     continue
 
-                # NOME DO USUÁRIO (após escolher especialidade)
-                if sender in user_state and user_state[sender].get("step") == "nome":
-                    especialidade = user_state[sender]["especialidade"]
-                    nome = message["text"]["body"].strip()
+                # RECEBER PEDIDO FINAL
+                if sender in user_state and user_state[sender].get("step") == "pedido":
+                    item = user_state[sender]["item"]
+                    detalhes = message["text"]["body"].strip()
+
                     send_text(
                         sender,
-                        f"Perfeito ✅\nSeu agendamento em *{especialidade}* foi registrado para *{nome}*.\nEm breve entraremos em contato!"
+                        f"Perfeito ✅\nSeu pedido de *{item}* foi registrado.\nDetalhes: {detalhes}\n\nEm breve vamos confirmar o seu pedido!"
                     )
+
                     user_state.pop(sender, None)
                     continue
 
@@ -84,39 +87,53 @@ async def webhook(request: Request):
             elif message["type"] == "interactive":
                 button_id = message["interactive"]["button_reply"]["id"]
 
-                if button_id == "marcar":
+                # VER MENU
+                if button_id == "menu":
                     send_buttons(
                         sender,
-                        "Qual especialidade deseja?",
+                        "Aqui está o nosso menu 🍔🍕\nEscolha uma opção:",
                         [
-                            {"id": "clinica_geral", "title": "Clínica Geral"},
-                            {"id": "pediatria", "title": "Pediatria"},
-                            {"id": "odontologia", "title": "Odontologia"}
+                            {"id": "pizza", "title": "🍕 Pizza"},
+                            {"id": "hamburguer", "title": "🍔 Hambúrguer"},
+                            {"id": "bebidas", "title": "🥤 Bebidas"}
                         ]
                     )
-                    user_state[sender] = {"step": "especialidade"}
                     continue
 
-                elif button_id in ["clinica_geral", "pediatria", "odontologia"]:
-                    especialidade_map = {
-                        "clinica_geral": "Clínica Geral",
-                        "pediatria": "Pediatria",
-                        "odontologia": "Odontologia"
+                # FAZER PEDIDO
+                elif button_id == "pedido":
+                    send_buttons(
+                        sender,
+                        "O que deseja pedir?",
+                        [
+                            {"id": "pizza", "title": "🍕 Pizza"},
+                            {"id": "hamburguer", "title": "🍔 Hambúrguer"},
+                            {"id": "bebidas", "title": "🥤 Bebidas"}
+                        ]
+                    )
+                    user_state[sender] = {"step": "escolha_item"}
+                    continue
+
+                # ESCOLHA DO ITEM
+                elif button_id in ["pizza", "hamburguer", "bebidas"]:
+                    item_map = {
+                        "pizza": "Pizza",
+                        "hamburguer": "Hambúrguer",
+                        "bebidas": "Bebidas"
                     }
-                    especialidade = especialidade_map[button_id]
+                    item = item_map[button_id]
+
                     send_text(
                         sender,
-                        f"Perfeito ✅\nEnvie seu *nome completo* para confirmar o agendamento em {especialidade}."
+                        f"Boa escolha 😋\nVocê escolheu *{item}*.\n\nEnvie os detalhes do seu pedido (quantidade, sabor, endereço, etc)."
                     )
-                    user_state[sender] = {"step": "nome", "especialidade": especialidade}
+
+                    user_state[sender] = {"step": "pedido", "item": item}
                     continue
 
-                elif button_id == "horarios":
-                    send_text(sender, "Atendemos de segunda a sexta, das 08h às 17h.")
-                    continue
-
+                # ATENDENTE HUMANO
                 elif button_id == "atendente":
-                    send_text(sender, "Ok 👍 Vou te encaminhar para a recepção.")
+                    send_text(sender, "Ok 👍 Vou te encaminhar para um atendente.")
                     continue
 
     except Exception as e:
@@ -172,6 +189,3 @@ def send_buttons(to: str, message: str, buttons: list):
 
     resp = requests.post(url, headers=headers, json=payload)
     print("Resposta WhatsApp (buttons):", resp.json())
-
-
-
