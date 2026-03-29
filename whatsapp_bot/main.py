@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 import os
 import requests
 
@@ -11,6 +11,13 @@ app = FastAPI()
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+
+# =========================
+# HEALTH CHECK (IMPORTANTE PRO RENDER)
+# =========================
+@app.get("/")
+def home():
+    return {"status": "running"}
 
 # =========================
 # ESTADO DOS USUÁRIOS
@@ -26,9 +33,14 @@ def webhook_verify(
     hub_verify_token: str = Query(None, alias="hub.verify_token"),
     hub_challenge: str = Query(None, alias="hub.challenge"),
 ):
+    print("Verificação recebida")
+
     if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        print("Webhook verificado com sucesso")
         return hub_challenge
-    return "forbidden"
+
+    print("Falha na verificação")
+    return PlainTextResponse("Forbidden", status_code=403)
 
 # =========================
 # RECEBER MENSAGENS (POST)
@@ -39,13 +51,25 @@ async def webhook(request: Request):
         data = await request.json()
         print("Recebi dados:", data)
 
-        entry = data.get("entry", [])[0]
-        changes = entry.get("changes", [])[0]
-        value = changes.get("value", {})
+        entry = data.get("entry", [])
+        if not entry:
+            return {"status": "no entry"}
+
+        changes = entry[0].get("changes", [])
+        if not changes:
+            return {"status": "no changes"}
+
+        value = changes[0].get("value", {})
         messages = value.get("messages", [])
 
+        if not messages:
+            return {"status": "no messages"}
+
         for message in messages:
-            sender = message["from"]
+            sender = message.get("from")
+
+            if not sender:
+                continue
 
             # =========================
             # TEXTO
@@ -53,29 +77,27 @@ async def webhook(request: Request):
             if message["type"] == "text":
                 text = message["text"]["body"].strip().lower()
 
-                # SAUDAÇÕES INICIAIS
                 greetings = ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "olaa"]
                 if any(g in text for g in greetings):
                     send_buttons(
                         sender,
-                        "Olá 👋 Bem-vindo ao nosso restaurante! Como posso ajudar?",
+                        "Olá 👋 Bem-vindo! Como posso ajudar?",
                         [
-                            {"id": "menu", "title": "📖 Ver Menu"},
-                            {"id": "pedido", "title": "🛒 Fazer Pedido"},
+                            {"id": "menu", "title": "📖 Menu"},
+                            {"id": "pedido", "title": "🛒 Pedido"},
                             {"id": "atendente", "title": "👤 Atendente"}
                         ]
                     )
                     user_state.pop(sender, None)
                     continue
 
-                # RECEBER PEDIDO FINAL
                 if sender in user_state and user_state[sender].get("step") == "pedido":
                     item = user_state[sender]["item"]
                     detalhes = message["text"]["body"].strip()
 
                     send_text(
                         sender,
-                        f"Perfeito ✅\nSeu pedido de *{item}* foi registrado.\nDetalhes: {detalhes}\n\nEm breve vamos confirmar o seu pedido!"
+                        f"Pedido confirmado ✅\n*{item}*\nDetalhes: {detalhes}"
                     )
 
                     user_state.pop(sender, None)
@@ -87,24 +109,21 @@ async def webhook(request: Request):
             elif message["type"] == "interactive":
                 button_id = message["interactive"]["button_reply"]["id"]
 
-                # VER MENU
                 if button_id == "menu":
                     send_buttons(
                         sender,
-                        "Aqui está o nosso menu 🍔🍕\nEscolha uma opção:",
+                        "Menu 🍔🍕",
                         [
                             {"id": "pizza", "title": "🍕 Pizza"},
                             {"id": "hamburguer", "title": "🍔 Hambúrguer"},
                             {"id": "bebidas", "title": "🥤 Bebidas"}
                         ]
                     )
-                    continue
 
-                # FAZER PEDIDO
                 elif button_id == "pedido":
                     send_buttons(
                         sender,
-                        "O que deseja pedir?",
+                        "Escolha o item:",
                         [
                             {"id": "pizza", "title": "🍕 Pizza"},
                             {"id": "hamburguer", "title": "🍔 Hambúrguer"},
@@ -112,55 +131,56 @@ async def webhook(request: Request):
                         ]
                     )
                     user_state[sender] = {"step": "escolha_item"}
-                    continue
 
-                # ESCOLHA DO ITEM
                 elif button_id in ["pizza", "hamburguer", "bebidas"]:
                     item_map = {
                         "pizza": "Pizza",
                         "hamburguer": "Hambúrguer",
                         "bebidas": "Bebidas"
                     }
+
                     item = item_map[button_id]
 
                     send_text(
                         sender,
-                        f"Boa escolha 😋\nVocê escolheu *{item}*.\n\nEnvie os detalhes do seu pedido (quantidade, sabor, endereço, etc)."
+                        f"Escolheste *{item}* 😋\nEnvia detalhes (quantidade, endereço, etc)."
                     )
 
                     user_state[sender] = {"step": "pedido", "item": item}
-                    continue
 
-                # ATENDENTE HUMANO
                 elif button_id == "atendente":
-                    send_text(sender, "Ok 👍 Vou te encaminhar para um atendente.")
-                    continue
+                    send_text(sender, "Já vou chamar um atendente 👍")
 
     except Exception as e:
-        print("Erro ao processar mensagem:", e)
+        print("ERRO:", str(e))
 
-    return {"status": "ok"}
+    return JSONResponse({"status": "ok"}, status_code=200)
 
 # =========================
-# FUNÇÕES DE ENVIO
+# ENVIO DE MENSAGENS
 # =========================
 def send_text(to: str, message: str):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
+
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "text",
         "text": {"body": message}
     }
-    resp = requests.post(url, headers=headers, json=payload)
-    print("Resposta WhatsApp (text):", resp.json())
+
+    r = requests.post(url, headers=headers, json=payload)
+    print("Send text:", r.json())
+
 
 def send_buttons(to: str, message: str, buttons: list):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
@@ -187,5 +207,5 @@ def send_buttons(to: str, message: str, buttons: list):
         }
     }
 
-    resp = requests.post(url, headers=headers, json=payload)
-    print("Resposta WhatsApp (buttons):", resp.json())
+    r = requests.post(url, headers=headers, json=payload)
+    print("Send buttons:", r.json())
